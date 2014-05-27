@@ -1,0 +1,83 @@
+#!/usr/bin/env python
+import rospy
+import tf
+import PyKDL as kdl
+
+from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Point, Quaternion
+from nav_msgs.msg import Odometry
+
+import socket
+import select
+import struct
+
+
+udp_ip = "192.168.1.213"
+UDP_PORT = 2214
+
+sock = socket.socket(socket.AF_INET, # Internet
+                     socket.SOCK_DGRAM) # UDP
+sock.setblocking(0)
+#sock.bind((UDP_IP, UDP_PORT))
+
+odom_pub = rospy.Publisher('/odom', Odometry, queue_size=1)
+tf_br = tf.TransformBroadcaster()
+
+def send_command(mode, speed, yaw_rate, watchdog):
+	packet = struct.pack("!HhhH", mode, speed, yaw_rate, watchdog)
+        sock.sendto(packet, (udp_ip, UDP_PORT))
+
+def callback(msg):
+	mode = 1
+	speed = msg.linear.x * 1000
+	yaw_rate = msg.angular.z * 1000
+	watchdog = 20
+	
+	send_command(mode, speed, yaw_rate, watchdog)
+
+def listener():
+    rospy.init_node('heros_driver', anonymous=True)
+    udp_ip = rospy.get_param('host', '192.168.1.213')
+
+    # send zero command to give the robot our address
+    send_command(1,0,0,20)
+
+    rospy.Subscriber("/cmd_vel", Twist, callback)
+
+    while not rospy.is_shutdown():
+	data_is_available = select.select([sock], [], [], 1)[0]
+	if data_is_available:
+		data = sock.recv(4096)
+		timestamp, state, odom_x, odom_y, odom_theta = struct.unpack("!Iiiii", data)
+		#print struct.unpack("!Iiiii", data)
+		odom_msg = Odometry()
+		odom_msg.header.stamp = rospy.Time.now()
+		odom_msg.header.frame_id = "/odom"
+		odom_msg.child_frame_id = "/base_link"
+		odom_msg.pose.pose.position.x = odom_x * 0.001
+		odom_msg.pose.pose.position.y = odom_y * 0.001
+		odom_msg.pose.pose.orientation = Quaternion(*(kdl.Rotation.RPY(0,0,odom_theta*0.001).GetQuaternion()))
+
+		pos = (odom_msg.pose.pose.position.x,
+			odom_msg.pose.pose.position.y,
+			odom_msg.pose.pose.position.z)
+
+		ori = (odom_msg.pose.pose.orientation.x,
+			odom_msg.pose.pose.orientation.y,
+			odom_msg.pose.pose.orientation.z,
+			odom_msg.pose.pose.orientation.w)
+		# Publish odometry message
+		odom_pub.publish(odom_msg)
+		# Also publish tf if necessary
+		tf_br.sendTransform(pos, ori, odom_msg.header.stamp, odom_msg.child_frame_id, odom_msg.header.frame_id)
+
+		
+
+if __name__ == '__main__':
+
+        try:
+                listener()
+
+        except rospy.ROSInterruptException:
+                pass
+
