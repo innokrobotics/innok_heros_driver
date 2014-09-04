@@ -2,8 +2,8 @@
 Changelog for package innok_heros_driver
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+0.2.0 (2014-09-04)
+------------------
 * fixed launch file
 * edited readme
 * Merge branch 'master' of ssh://github.com/innokrobotics/innok_heros_driver
