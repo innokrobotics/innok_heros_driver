@@ -2,6 +2,7 @@
 import rospy
 import tf
 
+from std_msgs.msg import Float32
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import Point, Quaternion
 from nav_msgs.msg import Odometry
@@ -20,6 +21,7 @@ sock.setblocking(0)
 #sock.bind((UDP_IP, UDP_PORT))
 
 odom_pub = rospy.Publisher('/odom', Odometry, queue_size=1)
+voltage_pub = rospy.Publisher('battery_voltage', Float32, queue_size=1)
 tf_br = tf.TransformBroadcaster()
 
 def send_command(mode, speed, yaw_rate, watchdog):
@@ -48,8 +50,7 @@ def listener():
 	data_is_available = select.select([sock], [], [], 1)[0]
 	if data_is_available:
 		data = sock.recv(4096)
-		timestamp, state, odom_x, odom_y, odom_theta = struct.unpack("!Iiiii", data)
-		#print struct.unpack("!Iiiii", data)
+		version, timestamp, state, odom_x, odom_y, odom_theta, battery_voltage = struct.unpack("!iIiiiii", data)
 		odom_msg = Odometry()
 		odom_msg.header.stamp = rospy.Time.now()
 		odom_msg.header.frame_id = "/odom"
@@ -76,7 +77,9 @@ def listener():
 		odom_pub.publish(odom_msg)
 		# Also publish tf if necessary
 		tf_br.sendTransform(pos, ori, odom_msg.header.stamp, odom_msg.child_frame_id, odom_msg.header.frame_id)
-
+		voltage_msg = Float32()
+		voltage_msg.data = battery_voltage * 0.001
+		voltage_pub.publish(voltage_msg)
 		
 
 if __name__ == '__main__':
