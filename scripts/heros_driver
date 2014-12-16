@@ -35,8 +35,9 @@ def callback(msg):
 	send_command(mode, speed, yaw_rate, watchdog)
 
 def listener():
+    global udp_ip
     rospy.init_node('heros_driver', anonymous=True)
-    udp_ip = rospy.get_param('host', '192.168.1.213')
+    udp_ip = rospy.get_param('~host', '192.168.1.213')
 
     # send zero command to give the robot our address
     send_command(1,0,0,20)
