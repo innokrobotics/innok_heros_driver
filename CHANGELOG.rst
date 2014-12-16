@@ -2,6 +2,13 @@
 Changelog for package innok_heros_driver
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* publish battery voltage
+* bugfix for host parameter
+* eliminated KDL dependency
+* Contributors: Alwin Heerklotz
+
 0.2.0 (2014-09-04)
 ------------------
 * fixed launch file
