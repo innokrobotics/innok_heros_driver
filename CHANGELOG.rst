@@ -2,8 +2,8 @@
 Changelog for package innok_heros_driver
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.0.1 (2015-01-20)
+------------------
 * fixed installation
 * Contributors: Alwin Heerklotz
 
