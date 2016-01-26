@@ -3,9 +3,11 @@ import rospy
 import tf
 
 from std_msgs.msg import Float32
+from std_msgs.msg import Bool
 from geometry_msgs.msg import Twist
 from geometry_msgs.msg import Point, Quaternion
 from nav_msgs.msg import Odometry
+from sensor_msgs.msg import Joy
 
 import socket
 import select
@@ -14,6 +16,10 @@ import struct
 
 udp_ip = "192.168.1.213"
 UDP_PORT = 2214
+light1 = 255;
+light2 = 255;
+light3 = 255;
+light4 = 255;
 
 sock = socket.socket(socket.AF_INET, # Internet
                      socket.SOCK_DGRAM) # UDP
@@ -22,17 +28,42 @@ sock.setblocking(0)
 
 odom_pub = rospy.Publisher('/odom', Odometry, queue_size=1)
 voltage_pub = rospy.Publisher('battery_voltage', Float32, queue_size=1)
+rc_pub = rospy.Publisher('remote_joy', Joy, queue_size=1)
 tf_br = tf.TransformBroadcaster()
 
 def send_command(mode, speed, yaw_rate, watchdog):
 	packet = struct.pack("!HhhH", mode, speed, yaw_rate, watchdog)
         sock.sendto(packet, (udp_ip, UDP_PORT))
+        
+def send_lights():
+        packet = struct.pack("!HBBBB", 229, light1, light2, light3, light4)
+        sock.sendto(packet, (udp_ip, UDP_PORT))
+
+def lights_callback1(msg):
+	global light1
+	light1 = msg.data
+	send_lights()
+
+def lights_callback2(msg):
+	global light2
+	light2 = msg.data
+	send_lights()
+
+def lights_callback3(msg):
+	global light3
+	light3 = msg.data
+	send_lights()
+
+def lights_callback4(msg):
+	global light4
+	light4 = msg.data
+	send_lights()
 
 def callback(msg):
 	mode = 1
 	speed = msg.linear.x * 1000
 	yaw_rate = msg.angular.z * 1000
-	watchdog = 20
+	watchdog = 400
 	
 	send_command(mode, speed, yaw_rate, watchdog)
 
@@ -40,17 +71,34 @@ def listener():
     global udp_ip
     rospy.init_node('heros_driver', anonymous=True)
     udp_ip = rospy.get_param('~host', '192.168.1.213')
+    has_lights = rospy.get_param('~has_lights', False)
 
     # send zero command to give the robot our address
     send_command(1,0,0,20)
 
     rospy.Subscriber("/cmd_vel", Twist, callback)
+    
+    if has_lights:
+      rospy.Subscriber("/lights/light1", Bool, lights_callback1)
+      rospy.Subscriber("/lights/light2", Bool, lights_callback2)
+      rospy.Subscriber("/lights/light3", Bool, lights_callback3)
+      rospy.Subscriber("/lights/light4", Bool, lights_callback4)
+      
+      send_lights()
 
     while not rospy.is_shutdown():
 	data_is_available = select.select([sock], [], [], 1)[0]
 	if data_is_available:
 		data = sock.recv(4096)
-		version, timestamp, state, odom_x, odom_y, odom_theta, battery_voltage = struct.unpack("!iIiiiii", data)
+		if len(data) == 28:
+			version, timestamp, state, odom_x, odom_y, odom_theta, battery_voltage = struct.unpack("!iIiiiii", data)
+			has_remote_data = False
+		elif len(data) == 44:
+			version, timestamp, state, odom_x, odom_y, odom_theta, battery_voltage, axes, button = struct.unpack("!iIiiiii8s8s", data)
+			has_remote_data = True
+		else:
+			raise Error('Got data packet with unexpected length')
+
 		odom_msg = Odometry()
 		odom_msg.header.stamp = rospy.Time.now()
 		odom_msg.header.frame_id = "/odom"
@@ -80,6 +128,16 @@ def listener():
 		voltage_msg = Float32()
 		voltage_msg.data = battery_voltage * 0.001
 		voltage_pub.publish(voltage_msg)
+		
+		#publish RC messsage
+		if has_remote_data:
+			rc_msg = Joy()
+			for i in range(0,8):
+				rc_msg.axes.append( (struct.unpack("8B",axes)[i] - 127) / 127.0)
+			for i in range(0,8):
+				for j in range(0,8):
+					rc_msg.buttons.append(bool(struct.unpack("8B",button)[i] & (1 << j)))
+			rc_pub.publish(rc_msg)
 		
 
 if __name__ == '__main__':
