@@ -1,6 +1,6 @@
 <launch>
 	<!--param name="robot_description" command="$(find xacro)/xacro.py '$(find heros_description)/urdf/heros.urdf'" /-->
 	
-	<node pkg="innok_heros_driver" type="heros_driver" name="heros_node" args="_host:=192.168.1.213"/>
+	<node pkg="innok_heros_driver" type="heros_driver" name="heros_node" args="_host:=192.168.0.2"/>
 </launch>
 

@@ -2,11 +2,11 @@
 	<!--param name="robot_description" command="$(find xacro)/xacro.py '$(find heros_description)/urdf/heros.urdf'" /-->
 	<node pkg="tf" type="static_transform_publisher" name="link1_broadcaster" args="0.86 0.0 0.37 0 0 3.14 base_link laser 100" />
 	
-	<node pkg="innok_heros_driver" type="heros_driver" name="heros_node" args="_host:=192.168.1.213"/>
+	<node pkg="innok_heros_driver" type="heros_driver" name="heros_node" args="_host:=192.168.0.2"/>
 
 	<node name="lms100" pkg="lms1xx" type="LMS1xx_node" respawn="true" output="screen">
 
-		<param name="host" type="string" value="192.168.1.214"/>
+		<param name="host" type="string" value="192.168.0.4"/>
 
 	</node>
 
