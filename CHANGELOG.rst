@@ -2,6 +2,12 @@
 Changelog for package innok_heros_driver
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* changed default addresses
+* added lights and joy topics, changed watchdog unit
+* Contributors: Alwin Heerklotz, Sandra Reitinger
+
 1.0.1 (2015-01-20)
 ------------------
 * fixed installation
