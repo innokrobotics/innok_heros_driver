@@ -2,6 +2,10 @@
 Changelog for package innok_heros_driver
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+Forthcoming
+-----------
+* release for ROS Jade
+
 1.0.2 (2016-03-17)
 ------------------
 * changed default addresses
