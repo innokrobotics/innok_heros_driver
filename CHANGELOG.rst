@@ -2,8 +2,8 @@
 Changelog for package innok_heros_driver
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Forthcoming
------------
+1.0.3 (2017-06-17)
+------------------
 * release for ROS Kinetic
 
 1.0.2 (2016-03-17)
