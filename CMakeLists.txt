@@ -8,7 +8,10 @@ find_package(catkin REQUIRED COMPONENTS
   geometry_msgs
   rospy
   std_msgs
+  nav_msgs
+  sensor_msgs
   tf
+  roscpp
 )
 
 ## System dependencies are found with CMake's conventions
@@ -105,15 +108,16 @@ include_directories(
 
 ## Declare a cpp executable
 # add_executable(innok_heros_driver_node src/innok_heros_driver_node.cpp)
+add_executable(innok_heros_can_driver src/innok_heros_can_driver.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 # add_dependencies(innok_heros_driver_node innok_heros_driver_generate_messages_cpp)
 
-## Specify libraries to link a library or executable target against
-# target_link_libraries(innok_heros_driver_node
-#   ${catkin_LIBRARIES}
-# )
+# Specify libraries to link a library or executable target against
+target_link_libraries(innok_heros_can_driver
+  ${catkin_LIBRARIES}
+)
 
 #############
 ## Install ##
