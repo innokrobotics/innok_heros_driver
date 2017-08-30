@@ -252,14 +252,15 @@ int main(int argc, char **argv)
     can_open("can0"); // TODO: parameter for can device	
     
     boost::thread can_thread(can_task);
-    
+   
+    ros::Rate loop_rate(1000); 
     while (ros::ok())
     {
         ros_mutex.lock();
         ros::spinOnce();
         ros_mutex.unlock();
+	loop_rate.sleep();
     }
     can_running = false;
-    can_thread.join();
     return 0;
 }

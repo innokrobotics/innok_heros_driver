@@ -134,11 +134,11 @@ target_link_libraries(innok_heros_can_driver
 # )
 
 ## Mark executables and/or libraries for installation
-# install(TARGETS innok_heros_driver innok_heros_driver_node
+install(TARGETS innok_heros_can_driver innok_heros_can_driver
 #   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-#   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-# )
+   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
 
 ## Mark cpp header files for installation
 # install(DIRECTORY include/${PROJECT_NAME}/
