@@ -152,8 +152,8 @@ void publishOdomMsg()
     
     nav_msgs::Odometry odom_msg;
     odom_msg.header.stamp = ros::Time::now();
-    odom_msg.header.frame_id = "/odom";
-    odom_msg.child_frame_id = "/base_link";
+    odom_msg.header.frame_id = "odom";
+    odom_msg.child_frame_id = "base_link";
     odom_msg.pose.pose.position.x = odom_pos_x;
     odom_msg.pose.pose.position.y = odom_pos_y;
     odom_msg.pose.pose.orientation = odom_quaternion;
