@@ -253,11 +253,13 @@ int main(int argc, char **argv)
     
     boost::thread can_thread(can_task);
     
+    ros::Rate loop_rate(1000);
     while (ros::ok())
     {
         ros_mutex.lock();
         ros::spinOnce();
         ros_mutex.unlock();
+        loop_rate.sleep();
     }
     can_running = false;
     can_thread.join();
