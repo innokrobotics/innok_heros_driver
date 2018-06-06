@@ -33,8 +33,8 @@ class Nokia_Linear_Motors():
         speed = 1.0
         handle_set_fork = lambda f : self.set_motor(1, f.data, speed)
         handle_set_tilt = lambda f : self.set_motor(0, f.data, speed)
-        rospy.Subscriber('fork_position', handle_set_fork)
-        rospy.Subscriber('container_position', handle_set_tilt)
+        rospy.Subscriber('fork_position', Float32, handle_set_fork)
+        rospy.Subscriber('container_position', Float32, handle_set_tilt)
 
     def run(self):
         for message in self.bus:
