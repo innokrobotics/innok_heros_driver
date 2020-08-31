@@ -10,6 +10,7 @@ import bitstruct
 import collections
 from enum import Enum
 
+
 class SwitchState(Enum):
     Up = 1
     Center = 0
@@ -64,8 +65,9 @@ class Motorbox:
         self.dict['validMsgCount'] = 0
         self.dict['looptime'] = 0
         
-        self.dict['batterySOC'] = 0
-        self.dict['batteryVoltage'] = 0.0
+        if hardware_id == 'node_id: 1':
+            self.dict['batterySOC'] = 0
+            self.dict['batteryVoltage'] = 0.0
         
     def receiveStateInfo_1(self, data):
         # todo gscheite namen
@@ -111,16 +113,27 @@ class Motorbox:
     def generateDiagnosticMsg(self, stat):
         
         status = diagnostic_msgs.msg.DiagnosticStatus.OK
-        status_msg = "Motorbox Status"
+        status_msg = "Motorbox Status:"
         
-        if self.dict['state'] == DriveState.EmergencyStop.name or self.dict['state'] == DriveState.EmergencyStopRemote.name or self.dict['batterySOC'] < 20:
-            status = diagnostic_msgs.msg.DiagnosticStatus.WARNING
-            #todo status messages
+        if self.dict['state'] == DriveState.EmergencyStop.name or self.dict['state'] == DriveState.EmergencyStopRemote.name:
+            status = diagnostic_msgs.msg.DiagnosticStatus.WARN
+            
+            status_msg += ' Motorbox is in state {}!'.format(self.dict['state'])
+        
+        if self.dict['motor_left_warning'] is not 0 or self.dict['motor_right_warning'] is not 0:
+            status = diagnostic_msgs.msg.DiagnosticStatus.WARN    
+            status_msg += ' Motorbox has warning!'
+            
+            
+        if self.diagnostics.hwid == 'node_id: 1' and  self.dict['batterySOC'] < 20:
+            status = diagnostic_msgs.msg.DiagnosticStatus.WARN
+            
+            status_msg += ' Battery state of charge is lower than 20%!'
+            
         if self.dict['state'] == DriveState.Error.name:    
             status = diagnostic_msgs.msg.DiagnosticStatus.ERROR
+            status_msg += ' Motorbox is in state is {}'.format(self.dict['state'])
         
-        
-        status_msg = "Motorbox Status"
         
         stat.summary(status,status_msg)
         
@@ -182,6 +195,9 @@ class RemoteControl:
     def receiveBaseData(self, data):
         # todo cleanup
         dat1, dat2, dat3, dat4, res1, res2, count, error = struct.unpack("<8B", data)
+        
+        
+        
         activeStop = error & 1
         passiveStop = ((error >> 1) & 1)
         rf0 = ((error >> 2) & 1)
@@ -194,6 +210,10 @@ class RemoteControl:
             self.dict['connectionQuality']  = "20%...60%"
         elif(rf0==0 and rf1==1):
             self.dict['connectionQuality']  = ">60%"
+        
+        
+        joystickError, rf1, rf0, passiveStop, activeStop = bitstruct.unpack("u4u1u1u1u1", chr(error))
+        
             
         b_up, a_down, a_up, release_switch, estop_switch = bitstruct.unpack("p1u1u1u1p2u1u1", chr(dat1))
         d_down, d_up, c_down, c_up = bitstruct.unpack("p3u1u1u1u1p1", chr(dat4))
@@ -202,6 +222,11 @@ class RemoteControl:
         self.dict['activeStop'] = BinaryButtonState(activeStop).name
         self.dict['passiveStop'] = BinaryButtonState(passiveStop).name
         self.dict['release'] = BinaryButtonState(release_switch).name
+        
+        if joystickError == 0:
+            self.dict['joystickError'] = "no error"
+        else:
+            self.dict['joystickError'] = 'error joystick {}'.format(joystickError)
         
         if a_up:
             self.dict['A'] = SwitchState.Up.name
@@ -239,6 +264,7 @@ class RemoteControl:
         
         stat.summary(diagnostic_msgs.msg.DiagnosticStatus.OK, "Remote Control")
         
+                
         for x in self.dict:
             stat.add(x, self.dict[x])
         
