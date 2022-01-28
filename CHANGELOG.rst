@@ -2,6 +2,13 @@
 Changelog for package innok_heros_driver
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.0.5 (2022-01-28)
+------------------
+* publish battery state
+* publish linear velocity
+* publish angular velocity
+* Contributors: Tobias Griepentrog, Sabrina Heerklotz
+
 1.0.4 (2017-06-17)
 ------------------
 * release for ROS Kinetic
