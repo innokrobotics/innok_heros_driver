@@ -1,5 +1,6 @@
-/* Copyright 2017 Innok Robotics GmbH */
+/* Copyright 2022 Innok Robotics GmbH */
 
+#include <cmath>
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
@@ -34,6 +35,15 @@ double battery_percentage = 0;
 double odom_orientation = 0;
 double odom_pos_x = 0;
 double odom_pos_y = 0;
+
+double velocity = 0;
+double rotational_velocity = 0;
+
+double old_odom_orientation = 0;
+double old_odom_pos_x = 0;
+double old_odom_pos_y = 0;
+ros::Time old_tick;
+ros::Duration dt;
 
 uint8_t remote_buttons[8];
 uint8_t remote_analog[8];
@@ -163,6 +173,9 @@ void publishOdomMsg()
     odom_msg.pose.pose.position.x = odom_pos_x;
     odom_msg.pose.pose.position.y = odom_pos_y;
     odom_msg.pose.pose.orientation = odom_quaternion;
+
+    ros::Time tick = ros::Time::now();
+    dt = tick-old_tick;
     
     
     double odom_covariance[] = {0.1,	0,	0,	0,	0,	0,
@@ -175,9 +188,45 @@ void publishOdomMsg()
     {
       odom_msg.pose.covariance[i] = odom_covariance[i];
     }
+    double pi = 3.14159265;
+
+    double dx = odom_pos_x - old_odom_pos_x;
+    double dy = odom_pos_y - old_odom_pos_y;
+    if (pow(dx, 2) + pow(dy, 2) <= 1.0) {
+        velocity = 0.75*velocity + 0.25* sqrt(pow(dx, 2)+pow(dy, 2)) / dt.toSec();
+        //edit by Tim - solved problem with overflow from 3.14 to -3.14 and from -3.14 to 3.14 
+        if (odom_orientation>2.9 && old_odom_orientation<-2.9)
+        {    
+          rotational_velocity = 0.75*rotational_velocity + 0.25*-((pi-odom_orientation)+(pi+old_odom_orientation)) / dt.toSec();
+        }    
+       
+        else if (odom_orientation<-2.9 && old_odom_orientation>2.9)
+        {    
+          rotational_velocity = 0.75*rotational_velocity + 0.25*((pi+odom_orientation)+(pi-old_odom_orientation)) / dt.toSec();
+        }
+       
+        else
+        {
+           rotational_velocity = 0.75*rotational_velocity + 0.25*(odom_orientation - old_odom_orientation) / dt.toSec();
+        }
+
+       // rotational_velocity = 0.75*rotational_velocity + 0.25*(odom_orientation - old_odom_orientation) / dt.toSec();
+        double computed_orientation = atan2(dy, dx);
+        double angle_difference = fabs(computed_orientation-odom_orientation); 
+    }
+
+    odom_msg.twist.twist.linear.x = (dx * cos(-odom_orientation) - dy * sin(-odom_orientation)) / dt.toSec();
+    odom_msg.twist.twist.linear.y = (dx * sin(-odom_orientation) + dy * cos(-odom_orientation)) / dt.toSec();
+    odom_msg.twist.twist.angular.z = rotational_velocity;
         
     // Publish odometry message
     publisherOdom.publish(odom_msg);
+
+    //update last values
+    old_odom_orientation = odom_orientation;
+    old_odom_pos_x = odom_pos_x;
+    old_odom_pos_y = odom_pos_y;
+    old_tick = tick;
     
     // Also publish tf if necessary
     geometry_msgs::TransformStamped odom_trans;
@@ -191,8 +240,9 @@ void publishOdomMsg()
     odom_trans.transform.rotation = odom_quaternion;
     
     ros_mutex.lock();
-    tf_br.sendTransform(odom_trans);
+    //tf_br.sendTransform(odom_trans);
     ros_mutex.unlock();
+
 }
 
 void publishVoltageMsg()
@@ -284,8 +334,8 @@ int main(int argc, char **argv)
     can_open("can0"); // TODO: parameter for can device	
     
     boost::thread can_thread(can_task);
-   
-    ros::Rate loop_rate(1000); 
+    ros::Rate loop_rate(1000);
+    old_tick = ros::Time::now();
     while (ros::ok())
     {
         ros_mutex.lock();
@@ -294,5 +344,6 @@ int main(int argc, char **argv)
 	loop_rate.sleep();
     }
     can_running = false;
+    can_thread.join();
     return 0;
 }
