@@ -12,6 +12,7 @@
 #include <geometry_msgs/Point.h>
 #include <geometry_msgs/Quaternion.h>
 #include <nav_msgs/Odometry.h>
+#include <sensor_msgs/BatteryState.h>
 #include <sensor_msgs/Joy.h>
 #include <std_msgs/Float32.h>
 #include <tf/transform_broadcaster.h>
@@ -23,11 +24,13 @@
 void publishJoyMsg();
 void publishOdomMsg();
 void publishVoltageMsg();
+void publishBatteryStateMsg();
 
 // Variables
 int can_socket;
 
 double battery_voltage = 0;
+double battery_percentage = 0;
 double odom_orientation = 0;
 double odom_pos_x = 0;
 double odom_pos_y = 0;
@@ -38,6 +41,7 @@ uint8_t remote_analog[8];
 ros::Publisher publisherOdom;
 ros::Publisher publisherJoy;
 ros::Publisher publisherVoltage;
+ros::Publisher publisherBatteryState;
 
 boost::mutex ros_mutex;
 bool can_running = false;
@@ -129,7 +133,9 @@ void can_read_frames()
         else if (frame_rd.can_id == 235)
         {
             battery_voltage = (frame_rd.data[1]|(frame_rd.data[2]<<8))*0.01;
+            battery_percentage = frame_rd.data[0];
             publishVoltageMsg();
+            publishBatteryStateMsg();
         }
         else if (frame_rd.can_id == 236)
         {
@@ -198,6 +204,31 @@ void publishVoltageMsg()
     ros_mutex.unlock();
 }
 
+
+void publishBatteryStateMsg()
+{
+    sensor_msgs::BatteryState state_msg;
+    // fill in data according to http://docs.ros.org/kinetic/api/sensor_msgs/html/msg/BatteryState.html
+    state_msg.voltage = battery_voltage;
+    state_msg.current = NAN;
+    state_msg.charge = NAN;
+    state_msg.capacity = NAN;
+    state_msg.design_capacity = NAN;
+    state_msg.percentage = battery_percentage;
+    state_msg.power_supply_status = sensor_msgs::BatteryState::POWER_SUPPLY_STATUS_UNKNOWN;
+    state_msg.power_supply_health = sensor_msgs::BatteryState::POWER_SUPPLY_HEALTH_UNKNOWN;
+    state_msg.power_supply_technology = sensor_msgs::BatteryState::POWER_SUPPLY_TECHNOLOGY_LION;
+    state_msg.present = true;
+    for (int i = 0; i < 13; i++)
+        state_msg.cell_voltage.push_back(NAN);
+    state_msg.location = "";
+    state_msg.serial_number = "";
+    
+    ros_mutex.lock();
+    publisherBatteryState.publish(state_msg);
+    ros_mutex.unlock();
+}
+
 void publishJoyMsg()
 {
     sensor_msgs::Joy rc_msg;
@@ -247,6 +278,7 @@ int main(int argc, char **argv)
     
     publisherOdom = n.advertise<nav_msgs::Odometry>("odom", 20);
     publisherVoltage = n.advertise<std_msgs::Float32>("battery_voltage", 1);
+    publisherBatteryState = n.advertise<sensor_msgs::BatteryState>("battery_state", 1);
     publisherJoy = n.advertise<sensor_msgs::Joy>("remote_joy", 1);
     
     can_open("can0"); // TODO: parameter for can device	
