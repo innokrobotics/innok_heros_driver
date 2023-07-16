@@ -155,11 +155,15 @@ target_link_libraries(innok_heros_can_driver
 #   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 # )
 
-catkin_install_python(PROGRAMS scripts/heros_driver
+catkin_install_python(PROGRAMS 
+                      scripts/heros_driver
+                      scripts/diagnostics.py
+                      scripts/motor_control.py
+                      scripts/sps.py
                       DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
 
-install(DIRECTORY launch/
-        DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch)
+install(DIRECTORY launch
+        DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
 
 #############
 ## Testing ##
