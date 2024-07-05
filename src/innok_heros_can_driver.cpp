@@ -1,4 +1,4 @@
-/* Copyright 2022 Innok Robotics GmbH */
+/* Copyright 2017 Innok Robotics GmbH */
 
 #include <cmath>
 #include <stdio.h>
@@ -183,36 +183,26 @@ void publishOdomMsg()
                                 0,	0,	9999.0,	0,	0,	0,
                                 0,	0,	0,	0.6,	0,	0,
                                 0,	0,	0,	0,	0.6,	0,
-                                0,	0,	0,	0,	0,	0.1};
+                                0,	0,	0,	0,	0,	1.6};
     for(int i=0; i<36; i++)
     {
-      odom_msg.pose.covariance[i] = odom_covariance[i];
+      odom_msg.pose.covariance[i] = 0;
+      odom_msg.twist.covariance[i] = odom_covariance[i];
     }
     double pi = 3.14159265;
 
     double dx = odom_pos_x - old_odom_pos_x;
     double dy = odom_pos_y - old_odom_pos_y;
-    if (pow(dx, 2) + pow(dy, 2) <= 1.0) {
-        velocity = 0.75*velocity + 0.25* sqrt(pow(dx, 2)+pow(dy, 2)) / dt.toSec();
-        //edit by Tim - solved problem with overflow from 3.14 to -3.14 and from -3.14 to 3.14 
-        if (odom_orientation>2.9 && old_odom_orientation<-2.9)
-        {    
-          rotational_velocity = 0.75*rotational_velocity + 0.25*-((pi-odom_orientation)+(pi+old_odom_orientation)) / dt.toSec();
-        }    
-       
-        else if (odom_orientation<-2.9 && old_odom_orientation>2.9)
-        {    
-          rotational_velocity = 0.75*rotational_velocity + 0.25*((pi+odom_orientation)+(pi-old_odom_orientation)) / dt.toSec();
-        }
-       
-        else
-        {
-           rotational_velocity = 0.75*rotational_velocity + 0.25*(odom_orientation - old_odom_orientation) / dt.toSec();
-        }
+    double dalpha = odom_orientation - old_odom_orientation;
+    
+    if (dalpha > M_PI)
+        dalpha -= 2.0 * M_PI;
+    if (dalpha < -M_PI)
+        dalpha += 2.0 * M_PI;
 
-       // rotational_velocity = 0.75*rotational_velocity + 0.25*(odom_orientation - old_odom_orientation) / dt.toSec();
-        double computed_orientation = atan2(dy, dx);
-        double angle_difference = fabs(computed_orientation-odom_orientation); 
+    if (pow(dx, 2) + pow(dy, 2) <= 1.0) {
+        velocity = sqrt(pow(dx, 2)+pow(dy, 2)) / dt.toSec();
+        rotational_velocity = dalpha / dt.toSec();
     }
 
     odom_msg.twist.twist.linear.x = (dx * cos(-odom_orientation) - dy * sin(-odom_orientation)) / dt.toSec();
@@ -254,7 +244,12 @@ void publishVoltageMsg()
     ros_mutex.unlock();
 }
 
-
+/*
+ * @author Sabrina Heerklotz
+ * @date June 2018
+ * 
+ * publishes the battery state
+ */
 void publishBatteryStateMsg()
 {
     sensor_msgs::BatteryState state_msg;
@@ -271,8 +266,9 @@ void publishBatteryStateMsg()
     state_msg.present = true;
     for (int i = 0; i < 13; i++)
         state_msg.cell_voltage.push_back(NAN);
-    state_msg.location = "";
+    state_msg.location = "ROCTR";
     state_msg.serial_number = "";
+
     
     ros_mutex.lock();
     publisherBatteryState.publish(state_msg);

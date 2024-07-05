@@ -1,0 +1,7 @@
+#!/usr/bin/env python
+
+from innok_heros_driver.heros_diagnostics import HerosDiagnostics
+
+if __name__ == '__main__':
+    diagnosticNode = HerosDiagnostics()  
+    diagnosticNode.run()

@@ -1,0 +1,17 @@
+<launch>
+  	<arg name="bms_available" default="true"/>
+	<param name="can_interface" value="can0"/>
+
+	<node pkg="innok_heros_driver" type="innok_heros_can_driver" name="heros_node" respawn="true">
+		<remap from="battery_state" to="battery_state_roctr" if="$(arg bms_available)"/>
+	</node>
+	
+	<node pkg="innok_heros_driver" type="heros_diagnostics" name="heros_diagnostics" if="$(arg bms_available)" respawn="true"/>
+	<node pkg="innok_heros_driver" type="can_bms_node" name="can_bms_node" if="$(arg bms_available)" respawn="true"/>
+
+	<node pkg="innok_heros_driver" type="battery_watchdog" name="battery_watchdog" respawn="true">
+		<param name="shutdown_behaviour" value="battery" if="$(arg bms_available)"/>
+		<param name="shutdown_behaviour" value="pc" unless="$(arg bms_available)"/>
+	</node>
+</launch>
+

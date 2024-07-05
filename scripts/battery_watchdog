@@ -1,0 +1,6 @@
+#!/usr/bin/env python
+from innok_heros_driver.battery_watchdog import BatteryWatchdog 
+
+if __name__ == '__main__':
+    battery_watchdog = BatteryWatchdog()
+    battery_watchdog.run()

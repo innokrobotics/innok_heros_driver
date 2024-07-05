@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package>
   <name>innok_heros_driver</name>
-  <version>1.0.5</version>
+  <version>1.0.4</version>
   <description>Driver for the Innok Heros robot plattform</description>
 
   <maintainer email="ah@innok-robotics.de">Alwin Heerklotz</maintainer>
@@ -36,15 +36,15 @@
   <build_depend>geometry_msgs</build_depend>
   <build_depend>rospy</build_depend>
   <build_depend>std_msgs</build_depend>
+  <build_depend>sensor_msgs</build_depend>
   <build_depend>tf</build_depend>
   <build_depend>nav_msgs</build_depend>
-  <build_depend>sensor_msgs</build_depend>
   <run_depend>geometry_msgs</run_depend>
   <run_depend>rospy</run_depend>
   <run_depend>std_msgs</run_depend>
+  <run_depend>sensor_msgs</run_depend>
   <run_depend>tf</run_depend>
   <run_depend>nav_msgs</run_depend>
-  <run_depend>sensor_msgs</run_depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->
