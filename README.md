@@ -5,9 +5,9 @@ ROS driver for the Innok Heros robot plattform.
 
 Start with
 
-    roslaunch innok_heros_driver innok_heros_driver.launch bms_available:=true
+    ros2 launch innok_heros_driver innok_heros_driver_launch.py bms_available:=true
 
-If the robot is equipped with the XLAkku that includes the CAN battery management system (BMS), set the argument `bms_available`to `true`
+If the robot is equipped with the XLAkku that includes the CAN battery management system (BMS), set the argument `bms_available` to `true`
 
 
 This command will start the following nodes:

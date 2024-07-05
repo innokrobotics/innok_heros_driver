@@ -1,7 +1,8 @@
 import diagnostic_msgs
 import diagnostic_updater
-import rospy
-import socket
+import rclpy
+import rclpy.node
+import threading
 import can
 import struct
 import collections
@@ -47,7 +48,7 @@ class KeySwitchState(Enum):
 
     
 
-class Motorbox:
+class Motorbox(rclpy.node.Node):
     alarms = {}
     alarms[0] = ["None", ""]
     alarms[0x30] = ["Overload: ", "A load exceeding the rated torque was applied to the motor for 5 seconds or more."]
@@ -88,9 +89,10 @@ class Motorbox:
 
 
 
-    def __init__(self, hardware_id):
-        self.diagnostics = diagnostic_updater.Updater()
-        self.diagnostics.setHardwareID(hardware_id)
+    def __init__(self, node_id):
+        super().__init__(f'motorbox_{node_id}', namespace="diagnostics")
+        self.diagnostics = diagnostic_updater.Updater(self)
+        self.diagnostics.setHardwareID(f"'node_id: {node_id}'")
         self.diagnostics.add("Battery", self.generateBatteryDiagnostics)
         self.diagnostics.add("Motorbox", self.generateMotorboxDiagnostics)
 
@@ -133,10 +135,7 @@ class Motorbox:
         
         self.diagnostics.update()
         
-    def receiveStateInfo_2(self, data):
-        # TODO gscheite namen
-        # TODO fix remote estop flag bug in firmware:
-        
+    def receiveStateInfo_2(self, data):        
         self.dict['remoteEstopFlag'] = BinaryButtonState(data[0]).name
         self.dict['contactor'] = BinaryButtonState(data[1]).name
         self.dict['activeController'] = Controller(data[5]).name
@@ -169,23 +168,23 @@ class Motorbox:
         if self.dict['state'] == DriveState.EmergencyStop.name or self.dict['state'] == DriveState.EmergencyStopRemote.name:
             status = diagnostic_msgs.msg.DiagnosticStatus.WARN
             
-            status_msg = 'state is {}!'.format(self.dict['state'])
+            status_msg = f"state is {self.dict['state']}!"
 
         elif self.dict['state'] == DriveState.Error.name :
             status = diagnostic_msgs.msg.DiagnosticStatus.WARN
-            status_msg = 'state is {}'.format(self.dict['state'])
+            status_msg = f"state is {self.dict['state']}!"
 
         elif self.dict['state'] == DriveState.Error_Reset.name:
             status = diagnostic_msgs.msg.DiagnosticStatus.ERROR
-            status_msg = 'state is {}'.format(self.dict['state'])
+            status_msg = f"state is {self.dict['state']}!"
         
         elif self.dict['motor_left_warning'] != 'None' or self.dict['motor_right_warning'] != 'None':
             status = diagnostic_msgs.msg.DiagnosticStatus.WARN    
             status_msg = 'Warning: ' 
             if self.dict['motor_left_warning'] != 'None':
-                status_msg += 'left: ' + self.dict['motor_left_warning'] + " "
+                status_msg += f"left: {self.dict['motor_left_warning']} "
             if self.dict['motor_right_warning'] != 'None':
-                status_msg += 'right: ' + self.dict['motor_left_warning']
+                status_msg += f"right: {self.dict['motor_left_warning']} "
         
         if status == diagnostic_msgs.msg.DiagnosticStatus.OK:
             status_msg = "OK"
@@ -193,7 +192,7 @@ class Motorbox:
         stat.summary(status,status_msg)
         
         for x in self.dict:
-            stat.add(x, self.dict[x])
+            stat.add(x, f"{self.dict[x]}")
         
        
         return stat    
@@ -218,15 +217,15 @@ class Motorbox:
         stat.summary(status, status_msg)
                 
         for x in self.bat_dict:
-            stat.add(x, self.bat_dict[x])
+            stat.add(x, f"{self.bat_dict[x]}")
         
         return stat
             
         
-class RemoteControl:
+class RemoteControl(rclpy.node.Node):
     def __init__(self):
-        
-        self.diagnostics = diagnostic_updater.Updater()
+        super().__init__('remote_control', namespace="diagnostics")
+        self.diagnostics = diagnostic_updater.Updater(self)
 
         self.diagnostics.setHardwareID('Abitron NOVA-M Prop-2L')
         self.diagnostics.add("Remote Control", self.generateDiagnosticMsg)
@@ -313,7 +312,7 @@ class RemoteControl:
         if self.joystickError == 0:
             self.dict['joysticks'] = "no error"
         else:
-            self.dict['joysticks'] = 'error joystick {}'.format(self.joystickError)
+            self.dict['joysticks'] = f"error joystick {self.joystickError}"
         
         if a_up:
             self.dict['A'] = SwitchState.Up.name
@@ -352,18 +351,19 @@ class RemoteControl:
         if self.joystickError == 0:
             stat.summary(diagnostic_msgs.msg.DiagnosticStatus.OK, "Remote Control OK")
         else:
-            stat.summary(diagnostic_msgs.msg.DiagnosticStatus.ERROR, "Remote Control joystick error: {}".format(self.dict['joystick']))
+            stat.summary(diagnostic_msgs.msg.DiagnosticStatus.ERROR, f"Remote Control joystick error: {self.dict['joystick']}")
             
                 
         for x in self.dict:
-            stat.add(x, self.dict[x])
+            stat.add(x, f"{self.dict[x]}")
         
         return stat
         
-class KeySwitch:
+class KeySwitch(rclpy.node.Node):
     def __init__(self):
-        self.key_switch_pub = rospy.Publisher('key_switch', String, queue_size=10)
-        self.diagnostics = diagnostic_updater.Updater()
+        super().__init__('keyswitch', namespace="diagnostics")
+        self.key_switch_pub = self.create_publisher(String, '/key_switch', 10)
+        self.diagnostics = diagnostic_updater.Updater(self)
         self.diagnostics.setHardwareID('none')
         self.diagnostics.add("KeySwitch", self.generateDiagnosticMsg)
         self.dict = collections.OrderedDict()
@@ -376,31 +376,38 @@ class KeySwitch:
             self.dict['state'] = KeySwitchState.Autonomous.name
         
         self.diagnostics.update()
-        self.key_switch_pub.publish(self.dict['state'])
+        msg = String()
+        msg.data = self.dict['state']
+        self.key_switch_pub.publish(msg)
 
     def generateDiagnosticMsg(self, stat):
         stat.summary(diagnostic_msgs.msg.DiagnosticStatus.OK, "Keyswitch OK")        
         for x in self.dict:
-            stat.add(x, self.dict[x])
+            stat.add(x, f"{self.dict[x]}")
         
         return stat
 
-class HerosDiagnostics:    
+class HerosDiagnostics(rclpy.node.Node):    
     def __init__(self):
-        rospy.init_node('heros_diagnostics')
+        super().__init__('heros_diagnostics')
         self.remoteControl = RemoteControl()
         self.keyswitch = KeySwitch()
-        self.motorbox1 = Motorbox('node_id: 1')
-        self.motorbox2 = Motorbox('node_id: 2')
+        self.motorbox1 = Motorbox(1)
+        self.motorbox2 = Motorbox(2)
         
-        can_interface = rospy.get_param('can_interface', 'can0')
+        self.declare_parameter('can_interface', 'can0')
+        can_interface = self.get_parameter('can_interface').value
         self.bus = can.interface.Bus(can_interface, bustype='socketcan')
     
     def run(self):
-        while not rospy.is_shutdown():
+        threading.Thread(target=self.receive).start()
+        rclpy.spin(self)
+        
+    def receive(self):
+        while rclpy.ok():
             message = self.bus.recv(1.0)
             if message is None:
-                rospy.logwarn('No can message received for 1s!')
+                self.get_logger().warn('No can message received for 1s!')
             else:
                 if message.arbitration_id == 0x1e4:
                     # Remote control analog data
@@ -430,4 +437,3 @@ class HerosDiagnostics:
                 elif message.arbitration_id == 0x1F8:
                     self.keyswitch.receiveKeySwitchInfo(message.data)
         self.bus.shutdown()
-

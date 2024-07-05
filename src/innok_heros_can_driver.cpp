@@ -8,18 +8,18 @@
 #include <net/if.h>
 #include <linux/can.h>
 #include <linux/can/raw.h>
-#include <ros/ros.h>
-#include <geometry_msgs/Twist.h>
-#include <geometry_msgs/Point.h>
-#include <geometry_msgs/Quaternion.h>
-#include <nav_msgs/Odometry.h>
-#include <sensor_msgs/BatteryState.h>
-#include <sensor_msgs/Joy.h>
-#include <std_msgs/Float32.h>
-#include <tf/transform_broadcaster.h>
-#include <boost/thread/thread.hpp>
-#include <boost/thread/mutex.hpp>
-
+#include "rclcpp/rclcpp.hpp"
+#include <geometry_msgs/msg/twist.hpp>
+#include <geometry_msgs/msg/point.hpp>
+#include <geometry_msgs/msg/quaternion.hpp>
+#include "nav_msgs/msg/odometry.hpp"
+#include <sensor_msgs/msg/battery_state.hpp>
+#include <sensor_msgs/msg/joy.hpp>
+#include <std_msgs/msg/float32.hpp>
+#include <tf2_ros/transform_broadcaster.h>
+#include <tf2/LinearMath/Quaternion.h>
+#include <unistd.h>
+#include <thread>
 
 // Prototypes
 void publishJoyMsg();
@@ -42,18 +42,20 @@ double rotational_velocity = 0;
 double old_odom_orientation = 0;
 double old_odom_pos_x = 0;
 double old_odom_pos_y = 0;
-ros::Time old_tick;
-ros::Duration dt;
+
+
+rclcpp::Time old_tick;
 
 uint8_t remote_buttons[8];
 uint8_t remote_analog[8];
 
-ros::Publisher publisherOdom;
-ros::Publisher publisherJoy;
-ros::Publisher publisherVoltage;
-ros::Publisher publisherBatteryState;
+rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr publisherOdom;
+rclcpp::Publisher<sensor_msgs::msg::Joy>::SharedPtr publisherJoy;
+rclcpp::Publisher<sensor_msgs::msg::BatteryState>::SharedPtr publisherBatteryState;
+rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr publisherVoltage;
 
-boost::mutex ros_mutex;
+rclcpp::Node::SharedPtr nodeHandle;
+
 bool can_running = false;
 
 int can_open(const char * device)
@@ -104,7 +106,7 @@ int can_send_frame(struct can_frame * frame)
     }
 }
 
-int can_send_cmd_vel(double speed, double yawspeed, int modestate = 3)
+void can_send_cmd_vel(double speed, double yawspeed, int modestate = 3)
 {
     struct can_frame msg_send;
     
@@ -159,24 +161,26 @@ void can_read_frames()
         }
     }
 }
+std::unique_ptr<tf2_ros::TransformBroadcaster> tf_br;
 
 void publishOdomMsg()
 {
-    static tf::TransformBroadcaster tf_br;
 
-    geometry_msgs::Quaternion odom_quaternion = tf::createQuaternionMsgFromYaw(odom_orientation);
-    
-    nav_msgs::Odometry odom_msg;
-    odom_msg.header.stamp = ros::Time::now();
+    tf2::Quaternion q;
+    q.setEuler(odom_orientation, 0, 0);
+    geometry_msgs::msg::Quaternion odom_quaternion;
+
+    nav_msgs::msg::Odometry odom_msg;
+    odom_msg.header.stamp = rclcpp::Clock().now();
     odom_msg.header.frame_id = "odom";
     odom_msg.child_frame_id = "base_link";
     odom_msg.pose.pose.position.x = odom_pos_x;
     odom_msg.pose.pose.position.y = odom_pos_y;
     odom_msg.pose.pose.orientation = odom_quaternion;
-
-    ros::Time tick = ros::Time::now();
-    dt = tick-old_tick;
     
+    rclcpp::Time tick = rclcpp::Clock().now();
+
+    rclcpp::Duration dt(tick - old_tick);
     
     double odom_covariance[] = {0.1,	0,	0,	0,	0,	0,
                                 0,	0.1,	0,	0,	0,	0,
@@ -189,7 +193,6 @@ void publishOdomMsg()
       odom_msg.pose.covariance[i] = 0;
       odom_msg.twist.covariance[i] = odom_covariance[i];
     }
-    double pi = 3.14159265;
 
     double dx = odom_pos_x - old_odom_pos_x;
     double dy = odom_pos_y - old_odom_pos_y;
@@ -201,16 +204,16 @@ void publishOdomMsg()
         dalpha += 2.0 * M_PI;
 
     if (pow(dx, 2) + pow(dy, 2) <= 1.0) {
-        velocity = sqrt(pow(dx, 2)+pow(dy, 2)) / dt.toSec();
-        rotational_velocity = dalpha / dt.toSec();
+        velocity = sqrt(pow(dx, 2)+pow(dy, 2)) / dt.seconds();
+        rotational_velocity = dalpha / dt.seconds();
     }
 
-    odom_msg.twist.twist.linear.x = (dx * cos(-odom_orientation) - dy * sin(-odom_orientation)) / dt.toSec();
-    odom_msg.twist.twist.linear.y = (dx * sin(-odom_orientation) + dy * cos(-odom_orientation)) / dt.toSec();
+    odom_msg.twist.twist.linear.x = (dx * cos(-odom_orientation) - dy * sin(-odom_orientation)) / dt.seconds();
+    odom_msg.twist.twist.linear.y = (dx * sin(-odom_orientation) + dy * cos(-odom_orientation)) / dt.seconds();
     odom_msg.twist.twist.angular.z = rotational_velocity;
         
     // Publish odometry message
-    publisherOdom.publish(odom_msg);
+    publisherOdom->publish(odom_msg);
 
     //update last values
     old_odom_orientation = odom_orientation;
@@ -219,7 +222,7 @@ void publishOdomMsg()
     old_tick = tick;
     
     // Also publish tf if necessary
-    geometry_msgs::TransformStamped odom_trans;
+    geometry_msgs::msg::TransformStamped odom_trans;
     odom_trans.header.stamp = odom_msg.header.stamp;
     odom_trans.header.frame_id = odom_msg.header.frame_id;
     odom_trans.child_frame_id = odom_msg.child_frame_id;
@@ -229,19 +232,14 @@ void publishOdomMsg()
     odom_trans.transform.translation.z = 0.0;
     odom_trans.transform.rotation = odom_quaternion;
     
-    ros_mutex.lock();
-    //tf_br.sendTransform(odom_trans);
-    ros_mutex.unlock();
-
+    //tf_br->sendTransform(odom_trans);
 }
 
 void publishVoltageMsg()
 {
-    std_msgs::Float32 voltage_msg;
+    std_msgs::msg::Float32 voltage_msg;
     voltage_msg.data = battery_voltage;
-    ros_mutex.lock();
-    publisherVoltage.publish(voltage_msg);
-    ros_mutex.unlock();
+    publisherVoltage->publish(voltage_msg);
 }
 
 /*
@@ -252,17 +250,16 @@ void publishVoltageMsg()
  */
 void publishBatteryStateMsg()
 {
-    sensor_msgs::BatteryState state_msg;
-    // fill in data according to http://docs.ros.org/kinetic/api/sensor_msgs/html/msg/BatteryState.html
+    sensor_msgs::msg::BatteryState state_msg;
     state_msg.voltage = battery_voltage;
     state_msg.current = NAN;
     state_msg.charge = NAN;
     state_msg.capacity = NAN;
     state_msg.design_capacity = NAN;
     state_msg.percentage = battery_percentage;
-    state_msg.power_supply_status = sensor_msgs::BatteryState::POWER_SUPPLY_STATUS_UNKNOWN;
-    state_msg.power_supply_health = sensor_msgs::BatteryState::POWER_SUPPLY_HEALTH_UNKNOWN;
-    state_msg.power_supply_technology = sensor_msgs::BatteryState::POWER_SUPPLY_TECHNOLOGY_LION;
+    state_msg.power_supply_status = sensor_msgs::msg::BatteryState::POWER_SUPPLY_STATUS_UNKNOWN;
+    state_msg.power_supply_health = sensor_msgs::msg::BatteryState::POWER_SUPPLY_HEALTH_UNKNOWN;
+    state_msg.power_supply_technology = sensor_msgs::msg::BatteryState::POWER_SUPPLY_TECHNOLOGY_LION;
     state_msg.present = true;
     for (int i = 0; i < 13; i++)
         state_msg.cell_voltage.push_back(NAN);
@@ -270,14 +267,12 @@ void publishBatteryStateMsg()
     state_msg.serial_number = "";
 
     
-    ros_mutex.lock();
-    publisherBatteryState.publish(state_msg);
-    ros_mutex.unlock();
+    publisherBatteryState->publish(state_msg);
 }
 
 void publishJoyMsg()
 {
-    sensor_msgs::Joy rc_msg;
+    sensor_msgs::msg::Joy rc_msg;
     
     // analog axes
     for(int i=0; i<=8; i++)
@@ -296,15 +291,13 @@ void publishJoyMsg()
                 rc_msg.buttons.push_back(bool(false));
         }
     }
-    ros_mutex.lock();
-    publisherJoy.publish(rc_msg);
-    ros_mutex.unlock();
+    publisherJoy->publish(rc_msg);
 }
 
-void cmdVelCallback(const geometry_msgs::Twist::ConstPtr& msg)
+void cmdVelCallback(const geometry_msgs::msg::Twist& msg)
 {
-    ROS_DEBUG("received cmd_vel s=%f y=%f", msg->linear.x, msg->angular.z);
-    can_send_cmd_vel(msg->linear.x, msg->angular.z);
+    RCLCPP_DEBUG(nodeHandle->get_logger(), "received cmd_vel s=%f y=%f", msg.linear.x, msg.angular.z);
+    can_send_cmd_vel(msg.linear.x, msg.angular.z);
 }
 
 void can_task()
@@ -318,28 +311,24 @@ void can_task()
 
 int main(int argc, char **argv)
 {
-    ros::init(argc, argv, "innok_heros_can_driver");
-    ros::NodeHandle n;
-    ros::Subscriber Sub = n.subscribe("cmd_vel", 10, cmdVelCallback);
+    rclcpp::init(argc, argv);
+
+    nodeHandle = std::make_shared<rclcpp::Node>("innok_heros_can_driver");
+    auto cmdVelSub = nodeHandle->create_subscription<geometry_msgs::msg::Twist>("cmd_vel", 10, cmdVelCallback);
+    publisherOdom = nodeHandle->create_publisher<nav_msgs::msg::Odometry>("odom", 20);
+    publisherVoltage = nodeHandle->create_publisher<std_msgs::msg::Float32>("battery_voltage", 1);
+    publisherBatteryState = nodeHandle->create_publisher<sensor_msgs::msg::BatteryState>("battery_state", 1);
+    publisherJoy = nodeHandle->create_publisher<sensor_msgs::msg::Joy>("remote_joy", 1);
     
-    publisherOdom = n.advertise<nav_msgs::Odometry>("odom", 20);
-    publisherVoltage = n.advertise<std_msgs::Float32>("battery_voltage", 1);
-    publisherBatteryState = n.advertise<sensor_msgs::BatteryState>("battery_state", 1);
-    publisherJoy = n.advertise<sensor_msgs::Joy>("remote_joy", 1);
-    
+    std::make_unique<tf2_ros::TransformBroadcaster>(nodeHandle);
+
+
+
     can_open("can0"); // TODO: parameter for can device	
     
-    boost::thread can_thread(can_task);
-    ros::Rate loop_rate(1000);
-    old_tick = ros::Time::now();
-    while (ros::ok())
-    {
-        ros_mutex.lock();
-        ros::spinOnce();
-        ros_mutex.unlock();
-	loop_rate.sleep();
-    }
+    std::thread can_thread(can_task);
+
+    rclcpp::spin(nodeHandle);
+    rclcpp::shutdown();
     can_running = false;
-    can_thread.join();
-    return 0;
 }

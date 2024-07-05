@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-import rospy
+import rclpy
+from rclpy.node import Node
 import can
 import struct
 import diagnostic_msgs
@@ -9,11 +10,13 @@ import diagnostic_updater
 from std_msgs.msg import Bool
 from sensor_msgs.msg import BatteryState
 from innok_heros_driver.utils import check_soc_validity
+from functools import partial
 
-class CANBmsPublisher:
+class CANBmsPublisher(Node):
     def __init__(self):
-        rospy.init_node('can_bms_publisher')
-        can_interface = rospy.get_param('can_interface', 'can0')
+        super().__init__('can_bms_publisher')
+        self.declare_parameter('can_interface', 'can0')
+        can_interface = self.get_parameter('can_interface').value
         self.bus = can.interface.Bus(channel=can_interface, bustype='socketcan')
 
         self.can_messages = {
@@ -410,30 +413,30 @@ class CANBmsPublisher:
 
         self.can_ids = list(self.can_messages.keys())
 
-        self.state_pub = rospy.Publisher('battery_state', BatteryState, queue_size=10)
+        self.state_pub = self.create_publisher(BatteryState, 'battery_state', qos_profile=10)
         self.battery_state_msg = BatteryState()
         self.battery_state_msg.cell_voltage = [0.0] * 13
         self.battery_state_msg.location = 'BMS'
         self.battery_state_msg.power_supply_technology = BatteryState.POWER_SUPPLY_TECHNOLOGY_LION
-        self.diagnostics = diagnostic_updater.Updater()
+        self.diagnostics = diagnostic_updater.Updater(self)
         self.diagnostics.setHardwareID('CAN BMS')
         self.diagnostics.add("XLAkku", self.generateBatteryDiagnostics)
 
         self.ros_messages = {
             'XLAkku_Power/XLAkku_on_off': {
                 'can_id': 0x10002f07,
-                'subscriber': rospy.Subscriber('XLAkku_Power/XLAkku_on_off', Bool, self.ros_msg_callback, callback_args=0x10002f07),
+                'subscriber': self.create_subscription(Bool, 'XLAkku_Power/XLAkku_on_off', partial(self.ros_msg_callback, can_id=0x10002f07), qos_profile=10),
             },
             'XLAkku_CANBroadcast/XLAkku_broadcast_on_off': {
                 'can_id': 0x10003f07,
-                'subscriber': rospy.Subscriber('XLAkku_CANBroadcast/XLAkku_broadcast_on_off', Bool, self.ros_msg_callback, callback_args=0x10003f07),
+                'subscriber': self.create_subscription(Bool, 'XLAkku_CANBroadcast/XLAkku_broadcast_on_off', partial(self.ros_msg_callback, can_id=0x10003f07), qos_profile=10),
             }
         }
 
-        rospy.Timer(rospy.Duration(0.001), self.receive_callback)
+        self.create_timer(0.001, self.receive_callback)
 
 
-    def receive_callback(self, event):
+    def receive_callback(self):
         message = self.bus.recv(1.0)
         # If a message was received
         if message:
@@ -459,15 +462,15 @@ class CANBmsPublisher:
                         if signal['name'] == 'Voltage':
                             self.battery_state_msg.voltage = signal['value'] / 100.0
                         elif signal['name'] == 'Current':
-                            self.battery_state_msg.current = signal['value']
+                            self.battery_state_msg.current = float(signal['value'])
                         elif signal['name'] == 'RemCapacity':
-                            self.battery_state_msg.capacity = signal['value']  
+                            self.battery_state_msg.capacity = float(signal['value'])
                         elif signal['name'] == 'RemCapacityPerc':
-                            self.battery_state_msg.percentage = signal['value']  
+                            self.battery_state_msg.percentage = float(signal['value']  )
 
                     elif self.can_messages[message.arbitration_id]['name'] == 'XLAkku_State':
                         if signal['name'] == 'Temperature':
-                            self.battery_state_msg.temperature = signal['value']
+                            self.battery_state_msg.temperature = float(signal['value'])
                     elif 'Cellvoltage' in self.can_messages[message.arbitration_id]['name']:
                         # extract cell number and set value in corresponding field of 
                         self.battery_state_msg.cell_voltage[int(signal['name'].strip('Cell_')) - 1] = signal['value']
@@ -502,21 +505,20 @@ class CANBmsPublisher:
         return value
 
     def publish_battery_state(self):
-        self.battery_state_msg.header.seq += 1
-        self.battery_state_msg.header.stamp = rospy.Time.now()
+        self.battery_state_msg.header.stamp = self.get_clock().now().to_msg()
         self.state_pub.publish(self.battery_state_msg)
 
     def ros_msg_callback(self, msg, can_id):
         data = [1 if msg.data else 0]
 
         # Create a CAN message with the received data and send it
-        can_msg = can.Message(arbitration_id=can_id,
-                              data=data, is_extended_id=True)
+        can_msg = can.Message(arbitration_id=can_id, data=data, is_extended_id=True)
         self.bus.send(can_msg)
 
     def generateBatteryDiagnostics(self, stat):
         voltage = self.battery_state_msg.voltage
         soc = self.battery_state_msg.percentage     
+        print(soc)
         if check_soc_validity(voltage, soc) == False:
             status = diagnostic_msgs.msg.DiagnosticStatus.ERROR
             status_msg = "Battery state of charge is not valid!"
@@ -535,14 +537,8 @@ class CANBmsPublisher:
 
         for can_id in self.can_messages:
             for signal in self.can_messages[can_id]['signals']:
-                stat.add(signal['name'], signal['value'])
+                stat.add(signal['name'], str(signal['value']))
         return stat
     
     def run(self):
-        try:
-            rospy.spin()
-        except KeyboardInterrupt:
-            pass
-        finally:
-            print("Shutting down...")
-            self.bus.shutdown()
+        rclpy.spin(self)

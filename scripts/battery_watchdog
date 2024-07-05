@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 from innok_heros_driver.battery_watchdog import BatteryWatchdog 
+import rclpy
 
 if __name__ == '__main__':
+    rclpy.init()
     battery_watchdog = BatteryWatchdog()
     battery_watchdog.run()
