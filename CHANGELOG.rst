@@ -2,6 +2,7 @@
 Changelog for package innok_heros_driver
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 1.1.0 (2024-07-05)
+------------------
 * Add can_bms node for XLAkku
 * Add battery_watchdog node
 * Improvement of package structure
